@@ -64,8 +64,18 @@ class SharedLink(SQLModel, table=True):
 engine = create_engine(DATABASE_URL)
 
 def create_db_and_tables():
+    # Azure usa /home para persistencia
+    global STORAGE_PATH, DATABASE_FILE, DATABASE_URL, engine
+    
+    if os.path.exists("/home"):  # Estamos en Azure
+        STORAGE_PATH = "/home/storage"
+        DATABASE_FILE = "/home/appcenter.db"
+        DATABASE_URL = f"sqlite:///{DATABASE_FILE}"
+        # Recrear engine con nueva URL
+        engine = create_engine(DATABASE_URL)
+    
     if not os.path.exists(STORAGE_PATH): 
-        os.makedirs(STORAGE_PATH)
+        os.makedirs(STORAGE_PATH, exist_ok=True)
     SQLModel.metadata.create_all(engine)
 
 def initialize_root_user():
@@ -232,15 +242,10 @@ def authenticated_download(version_id: int, user: User = Depends(get_current_use
  
 if __name__ == "__main__":
     import uvicorn
-    # ✅ SOLUCIÓN AL PUERTO: Cambiar puerto o buscar uno libre
-    try:
-        uvicorn.run(app, host="127.0.0.1", port=8002)
-    except Exception as e:
-        print(f"❌ Error en puerto 8002: {e}")
-        print("🔄 Intentando con puerto 8001...")
-        try:
-            uvicorn.run(app, host="127.0.0.1", port=8001)
-        except Exception as e:
-            print(f"❌ Error en puerto 8001: {e}")
-            print("🔄 Intentando con puerto 3000...")
-            uvicorn.run(app, host="127.0.0.1", port=3000)
+    port = int(os.getenv("PORT", 8000))  # Cambiar de 8002 a 8000
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=port,
+        workers=1  # Azure Free tier limitation
+    )
