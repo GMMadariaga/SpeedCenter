@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Descargar {{ app.name }}</title>
+    <link href="{{ url_for('static', path='/styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="public-container">
+        <!-- Puedes añadir un <img> para el logo de la app aquí -->
+        <h1>{{ app.name }}</h1>
+        <p>{{ app.description or 'Descarga la última versión de nuestra aplicación.' }}</p>
+        <p><strong>Plataforma:</strong> {{ app.platform }}</p>
+        
+        <hr style="margin: 30px 0;">
+
+        {% if latest_release %}
+            <h2>Última Versión Estable</h2>
+            <p><strong>Versión: {{ latest_release.version_string }}</strong> (Publicada el {{ latest_release.created_at.strftime('%d-%m-%Y') }})</p>
+            <a href="/download/{{ latest_release.id }}" class="btn btn-primary" style="font-size: 1.2rem; padding: 15px 30px;">Descargar Ahora</a>
+            <p style="margin-top: 15px;"><em>{{ latest_release.release_notes or '' }}</em></p>
+        {% else %}
+            <h2>No hay versiones estables disponibles</h2>
+            <p>Por favor, vuelve a intentarlo más tarde.</p>
+        {% endif %}
+
+        {% if other_versions %}
+        <h3 style="margin-top: 40px;">Otras Versiones Disponibles</h3>
+        <table>
+            <tbody>
+                {% for version in other_versions %}
+                <tr>
+                    <td>{{ version.version_string }}</td>
+                    <td><a href="/download/{{ version.id }}" class="btn btn-secondary">Descargar</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <footer style="margin-top: 40px; color: #888; font-size: 0.9rem;">
+            <p>© {{ now.year }} Tu Compañía. Todos los derechos reservados.</p>
+        </footer>
+    </div>
+</body>
+</html>

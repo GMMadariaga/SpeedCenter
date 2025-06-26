@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard - App Center{% endblock %}
+{% block sidebar %}
+<aside class="sidebar d-flex flex-column flex-shrink-0 p-3 text-white bg-dark" style="width: 280px;">
+    <a href="/admin" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+        <i class="bi bi-box-seam-fill me-2 fs-4"></i>
+        <span class="fs-4">App Center</span>
+    </a>
+    <hr>
+    <ul class="nav nav-pills flex-column mb-auto">
+        <li class="nav-item"><a href="/admin" class="nav-link active text-white"><i class="bi bi-grid-1x2-fill me-2"></i> Ver Aplicaciones</a></li>
+        {% if user.role == 'ROOT' %}<li><a href="/admin/users" class="nav-link text-white"><i class="bi bi-people-fill me-2"></i> Gestionar Usuarios</a></li>{% endif %}
+    </ul>
+    <hr>
+    <div class="dropdown"><a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle fs-4 me-2"></i><strong>{{ user.username }}</strong></a>
+        <ul class="dropdown-menu dropdown-menu-dark text-small shadow">
+            <li><span class="dropdown-item-text"><span class="role-badge" style="background-color: #6c757d;">{{ user.role.name }}</span></span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="/logout"><i class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión</a></li>
+        </ul>
+    </div>
+</aside>
+{% endblock %}
+{% block content %}
+<h2 class="h3">Aplicaciones Registradas</h2>
+{% if msg %}<div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle-fill me-2"></i>{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if error %}<div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if user.role == 'ROOT' %}
+<div class="card mb-4"><div class="card-header"><h5 class="mb-0"><i class="bi bi-cloud-arrow-up-fill me-2"></i>Subir Nueva Versión</h5></div>
+    <div class="card-body"><form id="uploadForm" action="/admin/upload" method="post" enctype="multipart/form-data">
+            <div class="row"><div class="col-md-6 mb-3"><label for="app_name" class="form-label">Nombre de la Aplicación:</label><input type="text" class="form-control" id="app_name" name="app_name" required></div>
+                <div class="col-md-6 mb-3"><label for="platform" class="form-label">Plataforma:</label><select class="form-select" id="platform" name="platform" required><option value="Android">Android</option><option value="Windows">Windows</option><option value="iOS">iOS</option><option value="macOS">macOS</option></select></div></div>
+            <div class="mb-3"><label for="description" class="form-label">Descripción de la App (solo al crear):</label><textarea class="form-control" id="description" name="description" rows="2"></textarea></div>
+            <div class="row"><div class="col-md-6 mb-3"><label for="version_string" class="form-label">Versión:</label><input type="text" class="form-control" id="version_string" name="version_string" required placeholder="Ej: 1.2.3"></div>
+                <div class="col-md-6 mb-3"><label for="status" class="form-label">Estado:</label><select class="form-select" id="status" name="status" required><option value="beta">Beta</option><option value="release">Release</option></select></div></div>
+            <div class="mb-3"><label for="release_notes" class="form-label">Notas de la Versión:</label><textarea class="form-control" id="release_notes" name="release_notes" rows="3"></textarea></div>
+            <div class="mb-3"><label for="file" class="form-label">Archivo de la Aplicación:</label><input class="form-control" type="file" id="file" name="file" required></div>
+            <div class="progress mb-3 d-none" id="progressBarContainer"><div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%;">0%</div></div>
+            <button type="submit" class="btn btn-primary" id="uploadButton"><i class="bi bi-upload me-1"></i> Subir Versión</button></form></div></div>
+{% endif %}
+<h1 class="h2 mb-4">Panel de Administración</h1>
+{% for app in applications %}<div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">{{ app.name }} <span class="badge bg-secondary">{{ app.platform }}</span></h5></div>
+    <div class="card-body"><p class="card-text">{{ app.description or 'Sin descripción.' }}</p>
+        <table class="table table-hover align-middle"><thead><tr><th>Versión</th><th>Estado</th><th>Fecha</th><th class="text-end">Acciones</th></tr></thead>
+            <tbody>{% for version in app.versions | sort(attribute='created_at', reverse=True) %}<tr><td>{{ version.version_string }}</td><td><span class="badge {% if version.status == 'beta' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ version.status }}</span></td><td>{{ version.created_at.strftime('%d-%m-%Y %H:%M') }}</td>
+                        <td class="text-end"><a href="/download/{{ version.id }}" class="btn btn-sm btn-success download-btn" title="Descargar"><i class="bi bi-download"></i></a>
+                            <form action="/admin/versions/{{ version.id }}/share" method="post" class="d-inline"><button type="submit" class="btn btn-sm btn-info" title="Generar enlace de descarga"><i class="bi bi-share-fill"></i></button></form>
+                            {% if user.role == 'ROOT' %}<form action="/admin/versions/{{ version.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('¿Seguro?');"><button type="submit" class="btn btn-sm btn-danger" title="Eliminar"><i class="bi bi-trash-fill"></i></button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadForm = document.getElementById('uploadForm');
+    if (uploadForm) {
+        const uploadButton = document.getElementById('uploadButton');
+        const progressBarContainer = document.getElementById('progressBarContainer');
+        const progressBar = document.getElementById('progressBar');
+        uploadForm.addEventListener('submit', function(e) {
+            if (uploadForm.querySelector('[name=file]').files.length === 0) return;
+            e.preventDefault();
+            const formData = new FormData(uploadForm);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/admin/upload', true);
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    progressBar.style.width = percentComplete + '%';
+                    progressBar.textContent = percentComplete + '%';
+                }
+            });
+            xhr.addEventListener('loadstart', function() {
+                uploadButton.disabled = true;
+                uploadButton.innerHTML = `<span class="spinner-border" role="status" aria-hidden="true"></span> Subiendo...`;
+                progressBarContainer.classList.remove('d-none');
+            });
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.responseURL && xhr.responseURL !== window.location.href) {
+                        window.location.href = xhr.responseURL;
+                    } else { window.location.reload(); }
+                }
+            };
+            xhr.send(formData);
+        });
+    }
+    document.querySelectorAll('.download-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            const originalIcon = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = `<span class="spinner-border" role="status" aria-hidden="true"></span>`;
+            setTimeout(() => { button.disabled = false; button.innerHTML = originalIcon; }, 3000);
+        });
+    });
+});
+</script>
+{% endblock %}
