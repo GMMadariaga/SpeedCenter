@@ -15,7 +15,12 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select
 
-SECRET_KEY = "kalsfkbasf78gfsadubjbJBigfiuoqabfiasob98BUOBdOP*ASdfgbaqeiofg bsdjvdsh98sdfbvsbf89s8fbsdbHY66"
+# 🔐 VARIABLES DE ENTORNO - Para información sensible
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret-key-only-for-development-change-in-production")
+ROOT_PASSWORD = os.getenv("ROOT_PASSWORD", "root")  # Cambiar en producción
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# ⚙️ CONFIGURACIÓN - No sensible, puede estar en el código
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 STORAGE_PATH = "storage"
@@ -71,22 +76,39 @@ def create_db_and_tables():
 def initialize_root_user():
     with Session(engine) as session:
         if not session.exec(select(User).where(User.username == "root")).first():
-            session.add(User(username="root", hashed_password=pwd_context.hash("root"), role=UserRole.ROOT))
+            # 🔐 Usar contraseña de entorno en lugar de hardcodeada
+            session.add(User(
+                username="root", 
+                hashed_password=pwd_context.hash(ROOT_PASSWORD), 
+                role=UserRole.ROOT
+            ))
             session.commit()
+            print(f"✅ Usuario root creado con contraseña segura")
 
-# ✅ NUEVA FORMA: Lifespan Events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     create_db_and_tables()
     initialize_root_user()
-    print("🚀 App Center iniciado correctamente")
+    print(f"🚀 SpeedCenter iniciado en modo: {ENVIRONMENT}")
     yield
     # Shutdown
-    print("🛑 App Center apagándose...")
+    print("🛑 SpeedCenter apagándose...")
 
-# App con lifespan
-app = FastAPI(title="App Center con RBAC", lifespan=lifespan)
+# Configurar app según entorno
+app_config = {
+    "title": "SpeedCenter - Sistema de Distribución de Apps",
+    "lifespan": lifespan
+}
+
+# En producción, ocultar docs
+if ENVIRONMENT == "production":
+    app_config.update({
+        "docs_url": None,
+        "redoc_url": None
+    })
+
+app = FastAPI(**app_config)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
@@ -133,7 +155,15 @@ async def login_post(request: Request, session: Session = Depends(get_session)):
         return templates.TemplateResponse("login.html", {"request": request, "error": "Credenciales incorrectas"}, status_code=401)
     token = create_access_token(data={"sub": user.username})
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(key="access_token", value=token, httponly=True)
+    # Configurar cookies de forma segura en producción
+    secure = ENVIRONMENT == "production"
+    response.set_cookie(
+        key="access_token", 
+        value=token, 
+        httponly=True, 
+        secure=secure,
+        samesite="lax"
+    )
     return response
 
 @app.get("/logout", include_in_schema=False)
@@ -229,18 +259,17 @@ def authenticated_download(version_id: int, user: User = Depends(get_current_use
     can_download = ((user.role in [UserRole.ROOT, UserRole.ADMIN]) or (user.role == UserRole.TESTER and version.status in ['release', 'beta']))
     if not can_download: raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para descargar esta versión.")
     return FileResponse(path=version.file_path, filename=os.path.basename(version.file_path))
+
+# Health check para Render
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok", 
+        "environment": ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat()
+    }
  
 if __name__ == "__main__":
     import uvicorn
-    # ✅ SOLUCIÓN AL PUERTO: Cambiar puerto o buscar uno libre
-    try:
-        uvicorn.run(app, host="127.0.0.1", port=8002)
-    except Exception as e:
-        print(f"❌ Error en puerto 8002: {e}")
-        print("🔄 Intentando con puerto 8001...")
-        try:
-            uvicorn.run(app, host="127.0.0.1", port=8001)
-        except Exception as e:
-            print(f"❌ Error en puerto 8001: {e}")
-            print("🔄 Intentando con puerto 3000...")
-            uvicorn.run(app, host="127.0.0.1", port=3000)
+    port = int(os.getenv("PORT", 8002))
+    uvicorn.run(app, host="0.0.0.0", port=port)
